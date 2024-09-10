@@ -17,7 +17,7 @@ $pattern = '/http[^"]*' . preg_quote($websiteHost, '/') . '[^"]*-content\//i';
 if (preg_match($pattern, $htmlContent, $matches)) {
     $wpContentPath = $matches[0];
 } else {
-    echo json_encode(['wp' => 'false']); // return top themes / plugins from database
+    echo json_encode(['detected' => false]); // return top themes / plugins from database
     return;
 }
 
@@ -40,6 +40,7 @@ foreach ($matches[1] as $index => $type) {
     }
 }
 
+/*
 // check manual plugin slugs (custom logic: if cf7 is found, add all cf7 related)
 $pluginSlugsManual = ['wordpress-seo', 'seo-by-rank-math', 'wp-mail-smtp'];
 $pluginSlugsManual = array_diff($pluginSlugsManual, $pluginSlugs); // remove already found plugins
@@ -77,6 +78,7 @@ foreach ($pluginHandles as $pluginSlug => $ch) {
 curl_multi_close($multiHandle);
 
 // themes and plugins in db
+*/
 
 $themes = [];
 $plugins = [];
@@ -196,7 +198,7 @@ foreach ($pluginHandles as $pluginSlug => $ch) {
 curl_multi_close($multiHandle);
 
 echo json_encode([
-    'wp' => 'true',
+    'detected' => true,
     'themes' => $themes,
     'plugins' => $plugins,
 ]);
@@ -207,30 +209,36 @@ echo json_encode([
 // functions
 
 function theme_info_directory($data)
-{
-    $creationTime = substr($data['creation_time'], 0, 10); // Remove the hour
-    $homepage = $data['homepage']; // remove the utm parameters
-    $description = $data['sections']['description']; // limit size
-    $description = substr($description, 0, 1000);
+{ 
+    $authorUrl = $data['author']['author_url']; // remove the utm parameters
+    $parsedUrl = parse_url($authorUrl);
+    $authorUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'] ?? null;
+
+    $creationTime = substr($data['creation_time'], 0, 10); // remove the hour
+
+    $themeUrl = $data['homepage']; // look for the correct one, remove the utm parameters
+
+    $description = $data['sections']['description'];
+    $description = substr($description, 0, 1000); // limit size
 
     $theme = [
         'name' => $data['name'],
         'slug' => $data['slug'],
         'version' => $data['version'],
         'author' => $data['author']['author'],
-        'author_url' => $data['author']['author_url'],
+        'author_url' => $authorUrl,
         'screenshot_url' => "https:" . $data['screenshot_url'],
         'rating' => $data['rating'],
         'num_ratings' => $data['num_ratings'],
         'downloaded' => $data['downloaded'],
         'last_updated' => $data['last_updated'],
         'creation_time' => $creationTime,
-        'homepage' => $homepage,
+        'theme_url' => $themeUrl,
         'requires' => $data['requires'],
         'tested' => null,
         'requires_php' => $data['requires_php'],
         'description' => $description,
-        'link' => "https://wordpress.org/themes/" . $data['slug'],
+        'link' => "https://wordpress.org/themes/" . $data['slug'] . "/",
     ];
 
     return $theme;
@@ -238,17 +246,34 @@ function theme_info_directory($data)
 
 function plugin_info_directory($data)
 {
-    $contributors = $data['contributors'];
-    $lastUpdated = substr($data['last_updated'], 0, 10); // Remove the hour
+    $author = $data['author']; // clean
+    $authorUrl = $data['author']; // remove the utm parameters
+
+    $contributorNames = [];
+    foreach ($data['contributors'] as $contributor) {
+        $contributorNames[] = $contributor['display_name'];
+    }
+    $contributors = implode(', ', $contributorNames);
+
+    $lastUpdated = substr($data['last_updated'], 0, 10); // remove the hour
     $creationTime = substr($data['added'], 0, 10); // Remove the hour
-    $homepage = $data['homepage']; // remove the utm parameters
-    $description = $data['sections']['description']; // limit size
-    $description = substr($description, 0, 1000);
+    
+    $pluginUrl = $data['homepage']; // look for the correct one, remove the utm parameters
+
+    $description = $data['sections']['description'];
+    $description = substr($description, 0, 1000); // limit size
+    preg_replace('/[^\p{L}\p{N}\p{P}\p{Z}\s]/u', '', $description); // remove emojis, links, etc
+
+    $banner = $data['banners']['low'];
+    $icon = "https://ps.w.org/" . $data['slug'] . "/assets/icon-128x128"; // check icon
+    
 
     $plugin = [
         'name' => $data['name'],
         'slug' => $data['slug'],
         'version' => $data['version'],
+        'author' => $author,
+        'author_url' => $authorUrl,
         'contributors' => $contributors,
         'requires' => $data['requires'],
         'tested' => $data['tested'],
@@ -258,10 +283,11 @@ function plugin_info_directory($data)
         'active_installs' => $data['active_installs'],
         'last_updated' => $lastUpdated,
         'creation_time' => $creationTime,
-        'homepage' => $homepage,
+        'plugin_url' => $pluginUrl,
         'description' => $description,
-        'banner' => $data['banners']['low'],
-        'link' => "https://wordpress.org/plugins/" . $data['slug'],
+        'banner_url' => $banner,
+        'icon_url' => $icon,
+        'link' => "https://wordpress.org/plugins/" . $data['slug'] . "/",
     ];
 
     return $plugin;
@@ -271,7 +297,7 @@ function theme_info_styles($styleCssContent, $slug, $wpContentPath)
 {
     preg_match('/Theme Name: (.*)/', $styleCssContent, $matches);
     if (isset($matches[1])) {
-        $name = trim($matches[1]);
+        $themeName = trim($matches[1]);
     } else {
         return null; // The title should exist
     }
@@ -279,15 +305,21 @@ function theme_info_styles($styleCssContent, $slug, $wpContentPath)
     preg_match('/Theme URI: (.*)/', $styleCssContent, $matches);
     if (isset($matches[1])) {
         $parsedUrl = parse_url($matches[1]);
-        $sanatizedHomepage = $parsedUrl['host'] ?? null;
-        $homepage = $sanatizedHomepage ? $parsedUrl['scheme'] . '://' . $sanatizedHomepage : null;
+        $themeUri = $parsedUrl['scheme'] . '://' . $parsedUrl['host'] ?? null;
     } else {
-        $homepage = null;
-        $sanatizedHomepage = null;
+        $themeUri = null;
     }
 
     preg_match('/Author: (.*)/', $styleCssContent, $matches);
     $author = isset($matches[1]) ? trim($matches[1]) : null;
+
+    preg_match('/Author URI: (.*)/', $styleCssContent, $matches);
+    if (isset($matches[1])) {
+        $parsedUrl = parse_url($matches[1]);
+        $authorUri = $parsedUrl['scheme'] . '://' . $parsedUrl['host'] ?? null;
+    } else {
+        $authorUri = null;
+    }
 
     preg_match('/Version: (.*)/', $styleCssContent, $matches);
     $version = isset($matches[1]) ? trim($matches[1]) : null;
@@ -304,20 +336,21 @@ function theme_info_styles($styleCssContent, $slug, $wpContentPath)
     preg_match('/Description: (.*)/', $styleCssContent, $matches);
     $description = isset($matches[1]) ? trim($matches[1]) : null;
     $description = substr($description, 0, 1000);
+    preg_replace('/[^\p{L}\p{N}\p{P}\p{Z}\s]/u', '', $description); // remove emojis, links, etc
 
     $theme = [
-        'name' => $name,
+        'name' => $themeName,
         'slug' => $slug,
         'version' => $version,
         'author' => $author,
-        'author_url' => null,
+        'author_url' => $authorUri,
         'screenshot_url' => $wpContentPath . "themes/" . $slug . "/screenshot.png",
         'rating' => null,
         'num_ratings' => null,
         'downloaded' => null,
         'last_updated' => null,
         'creation_time' => null,
-        'homepage' => $homepage,
+        'theme_url' => $themeUri,
         'requires' => $reqWpVersion,
         'tested' => $testedWpVersion,
         'requires_php' => $reqPhpVersion,
@@ -346,14 +379,11 @@ function plugin_info_readme($readmeTxtContent, $slug)
     preg_match('/Donate link: (.*)/', $readmeTxtContent, $matches);
 
     $homepage = null;
-    $sanatizedHomepage = null;
-
     if (!empty($matches[1])) {
         // The donate link exists and is not PayPal
         if (strpos($matches[1], 'paypal') === false) {
             $parsedUrl = parse_url($matches[1]);
-            $sanatizedHomepage = $parsedUrl['host'] ?? null;
-            $homepage = $sanatizedHomepage ? $parsedUrl['scheme'] . '://' . $sanatizedHomepage : null;
+            $homepage = $parsedUrl['scheme'] . '://' . $parsedUrl['host'] ?? null;
         }
     }
 
@@ -369,12 +399,14 @@ function plugin_info_readme($readmeTxtContent, $slug)
     preg_match('/== Description ==\n\n(.*?)\n==/s', $readmeTxtContent, $matches); // Description until the next "=="
     $description = $matches[1] ?? null;
     $description = substr($description, 0, 1000); // Limit the description to 1000 characters
-    $description = str_replace(['"', "'"], ' ', $description); // Remove quotes
+    preg_replace('/[^\p{L}\p{N}\p{P}\p{Z}\s]/u', '', $description); // remove emojis, links, etc
 
     $plugin = [
         'name' => $name,
         'slug' => $slug,
         'version' => $version,
+        'author' => null,
+        'author_url' => null,
         'contributors' => $contributors,
         'requires' => $reqWpVersion,
         'tested' => $testedWpVersion,
@@ -384,9 +416,10 @@ function plugin_info_readme($readmeTxtContent, $slug)
         'active_installs' => null,
         'last_updated' => null,
         'creation_time' => null,
-        'homepage' => $homepage,
+        'plugins_url' => $homepage,
         'description' => $description,
-        'banner' => null,
+        'banner_url' => null,
+        'icon_url' => null,
         'link' => null,
     ];
 
