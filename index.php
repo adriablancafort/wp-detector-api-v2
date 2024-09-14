@@ -1,5 +1,7 @@
 <?php
 header('Content-Type: application/json');
+// do not display errors
+ini_set('display_errors', '0');
 
 $url = $_GET['url'];
 $parsedUrl = parse_url($url);
@@ -14,8 +16,8 @@ $htmlContent = curl_exec($ch);
 curl_close($ch);
 
 // wp-content
-$pattern = '/http[^"]*' . $websiteHost . '[^"]*-content\//i';
-if (preg_match($pattern, $htmlContent, $matches)) {
+$patternWpContent = '/http[^"]*' . $websiteHost . '[^"]*-content\//i';
+if (preg_match($patternWpContent, $htmlContent, $matches)) {
     $wpContentPath = $matches[0];
 } else {
     echo json_encode(['detected' => false]); // return top themes / plugins from database
@@ -23,7 +25,8 @@ if (preg_match($pattern, $htmlContent, $matches)) {
 }
 
 // themes and plugins
-preg_match_all('/content\/(themes|plugins)\/([^\/]+)\//', $htmlContent, $matches);
+$patternThemesPlugins = '/content/(themes|plugins)/([a-zA-Z0-9-_]+)//';
+preg_match_all($patternThemesPlugins, $htmlContent, $matches);
 
 $themeSlugs = [];
 $pluginSlugs = [];
@@ -177,6 +180,10 @@ foreach ($themeHandles as $themeSlug => $ch) {
     if (!empty($styleCssContent)) {
         $theme = theme_info_styles($styleCssContent, $themeSlug, $wpContentPath);
         if (!empty($theme)) {
+            // add missing attributes
+            if (is_null($theme['screenshot_url'])) {
+                $theme['screenshot_url'] = "no-theme-screenshot.svg";
+            }
             $themes[] = $theme;
         }
     }
@@ -189,6 +196,10 @@ foreach ($pluginHandles as $pluginSlug => $ch) {
     if (!empty($readmeTxtContent)) {
         $plugin = plugin_info_readme($readmeTxtContent, $pluginSlug);
         if (!empty($plugin)) {
+            // add missing attributes
+            if (is_null($theme['banner_url'])) {
+                $theme['banner_url'] = "no-plugin-banner.svg";
+            }
             $plugins[] = $plugin;
         }
     }
