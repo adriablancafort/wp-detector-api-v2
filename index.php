@@ -9,11 +9,12 @@ $websiteHost = $parsedUrl['host'];
 
 $ch = curl_init($url);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_ENCODING, '');
 $htmlContent = curl_exec($ch);
 curl_close($ch);
 
 // wp-content
-$pattern = '/http[^"]*' . preg_quote($websiteHost, '/') . '[^"]*-content\//i';
+$pattern = '/http[^"]*' . $websiteHost . '[^"]*-content\//i';
 if (preg_match($pattern, $htmlContent, $matches)) {
     $wpContentPath = $matches[0];
 } else {
