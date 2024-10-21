@@ -1,11 +1,9 @@
-FROM php:8.1-fpm-alpine
-
-RUN docker-php-ext-install pdo pdo_mysql
+FROM php:latest-alpine
 
 WORKDIR /var/www/html
 
 COPY . .
 
-EXPOSE 9000
+EXPOSE 8000
 
-CMD ["php-fpm"]
+CMD ["php", "-S", "0.0.0.0:8000"]
