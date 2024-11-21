@@ -219,7 +219,7 @@ echo json_encode([
 // functions
 
 function theme_info_directory($data)
-{ 
+{
     $authorUrl = $data['author']['author_url']; // remove the utm parameters
     $parsedUrl = parse_url($authorUrl);
     $authorUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'] ?? null;
@@ -274,14 +274,7 @@ function plugin_info_directory($data)
     $parsedHomepage = parse_url($homepage);
     $homepage = $parsedHomepage['scheme'] . '://' . $parsedHomepage['host'] ?? null;
 
-    /*
-    $description = $data['sections']['description'];
-    $description = substr($description, 0, 1000); // limit size
-    preg_replace('/[^\p{L}\p{N}\p{P}\p{Z}\s]/u', '', $description); // remove emojis, links, etc
-    */
-
     $banner = $data['banners']['low'];
-    $icon = "https://ps.w.org/" . $data['slug'] . "/assets/icon-128x128.png"; // check icon
 
     $plugin = [
         'name' => $data['name'],
@@ -300,7 +293,7 @@ function plugin_info_directory($data)
         'creation_time' => $creationTime,
         'description' => null,
         'banner_url' => $banner,
-        'icon_url' => $icon,
+        'icon_url' => null,
         'link' => "https://wordpress.org/plugins/" . $data['slug'] . "/",
     ];
 
