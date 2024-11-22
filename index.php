@@ -3,15 +3,17 @@ header('Content-Type: application/json');
 // do not display errors
 ini_set('display_errors', '0');
 
+include 'db.php';
 include 'functions.php';
 
-$url = $_GET['url'];
-$parsedUrl = parse_url($url);
+$db = new Database();
+$db->connect();
+
+$websiteUrl = $_GET['url'];
+$parsedUrl = parse_url($websiteUrl);
 $websiteHost = $parsedUrl['host'];
 
-// query db
-
-$ch = curl_init($url);
+$ch = curl_init($websiteUrl);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_ENCODING, '');
 $htmlContent = curl_exec($ch);
@@ -216,3 +218,6 @@ echo json_encode([
 ]);
 
 // write themes and plugins to database
+$query = "INSERT INTO websites (url, wp) VALUES ('$websiteUrl', true)";
+$db->query($query);
+$db->close();
